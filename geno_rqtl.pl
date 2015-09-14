@@ -1,0 +1,78 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+my $infile = shift;
+
+open my $fh, "<$infile" or die $!;
+
+my $header = <$fh>;
+print $header;
+my @cross_type;
+while ( <$fh> ) {
+    chomp;
+    my @row = split /\t/, $_;
+    my $no_miss = scalar ( grep /^\-+$/, @row);
+    ### filter out data missingness
+    if ( $no_miss <= 10 ) {
+	my ($f1_female, $f1_male) = @row[2..3];
+	push @cross_type, "$f1_female.$f1_male";
+	my ($f1f_female, $f1f_male, $f1m_female, $f1m_male) = @row[4..7];
+	## deal with alleles
+	my @f1_female_all = map lc ,(split //, $f1_female);
+	my @f1f_female_all = map lc, (split //, $f1f_female);
+	my @f1f_male_all = map lc , (split //, $f1f_male);
+
+	my @f1_male_all = map lc, (split //, $f1_male);
+	my @f1m_female_all = map lc, (split //, $f1m_female);
+	my @f1m_male_all = map lc, (split //, $f1m_male);
+	
+
+	if ( keys %{ { map {$_, 1} @f1_female_all } } == 1 or join (",", @f1f_female_all) eq join(",", @f1f_male_all) ) { ## Cannot phase: f1 homozygetes or f0 same genotype
+	    print $row[0], "\t",(91-$no_miss), "\t",join ("\t",@row[2..7]), "\n";
+#	    print join (",", @f1f_female_all) ,"\n";
+#	    print join (",", @f1f_male_all) , "\n"; 
+	} else  { ## Can be pahsed: f1 heterzygetes
+	    my %pos_all;
+	    print join ("\t",@row[0..7]), "\n";
+	    print "fp$row[0]", "\t",(91-$no_miss);
+	    $pos_all{0} = $f1_female_all[0];
+	    $pos_all{1} = $f1_female_all[1];
+	    ## go through each allele below
+	    foreach my $key ( keys %pos_all ) {
+		if ($pos_all{$key} ~~ @f1f_female_all && $pos_all{$key} !~ @f1f_male_all) {
+		    $pos_all{0} = $pos_all{$key};
+		    $pos_all{1} = join "", grep {$_ ne $pos_all{$key}} @f1_female_all;
+		    print "bingo1\t";
+		    last;
+		} elsif ($pos_all{$key} ~~ @f1f_male_all && $pos_all{$key} !~ @f1f_female_all) {
+		    $pos_all{1} = $pos_all{$key};
+		    $pos_all{0} = join "", grep {$_ ne $pos_all{$key}} @f1_female_all;
+		    print "bingo2\t";
+		    last;
+		}
+		#} elsif ($pos_all{$key} !~ @f1f_male_all && $pos_all{$key} !~ @f1f_female_all) {
+		 #   print "violate\t";
+		  #  last;
+	    } # end of first foreach
+	    
+	    
+	    ## print f1 genotype
+	    foreach my $key (sort keys %pos_all) {
+		print $pos_all{$key};
+	    } # end of second foreach
+	    print "\t";
+	    print  join ("\t",@row[3..7]), "\n";
+	}# end of else (f1 heterozygotes)
+
+    } # end of if (data missingness)
+}
+ print join ("\t", uniq(@cross_type) ), "\n";
+
+sub uniq {
+    my %seen;
+    return grep { !$seen{$_}++ } @_;
+}	
+
+
